@@ -19,6 +19,8 @@ from logging import getLogger
 from utils.utils import get_local_time, early_stopping, dict2str
 from utils.topk_evaluator import TopKEvaluator
 
+from utils.plot_training import plot
+
 
 class AbstractTrainer(object):
     r"""Trainer Class is used to manage the training and evaluation processes of recommender system models.
@@ -192,6 +194,15 @@ class Trainer(AbstractTrainer):
         Returns:
              (float, dict): best valid score and best valid result. If valid_data is None, it returns (-1, None)
         """
+        loss_per_epoch = []
+        # id 0 : valid , id 1 : test score
+        r10 = []
+        r20 = []
+        n10 = []
+        n20 = []
+        p10 = []
+        p20 = []
+        epochth = []
         for epoch_idx in range(self.start_epoch, self.epochs):
             # train
             training_start_time = time()
@@ -228,6 +239,22 @@ class Trainer(AbstractTrainer):
                     self.logger.info(valid_score_output)
                     self.logger.info(valid_result_output)
                     self.logger.info('test result: \n' + dict2str(test_result))
+
+                '''loss curve'''
+                if epoch_idx % 1 == 0:
+                    loss_per_epoch.append(train_loss)
+                    epochth.append(epoch_idx)    
+
+                    '''evaluation curve'''
+                    r10.append([valid_result['recall@10'], test_result['recall@10']])
+                    # print('r10', r10)
+                    r20.append([valid_result['recall@20'], test_result['recall@20']])
+                    n10.append([valid_result['ndcg@10'], test_result['ndcg@10']])
+                    n20.append([valid_result['ndcg@20'], test_result['ndcg@20']])
+                    p10.append([valid_result['precision@10'], test_result['precision@10']])
+                    p20.append([valid_result['precision@20'], test_result['precision@20']])
+
+
                 if update_flag:
                     update_output = '██ ' + self.config['model'] + '--Best validation results updated!!!'
                     if verbose:
@@ -241,6 +268,31 @@ class Trainer(AbstractTrainer):
                     if verbose:
                         self.logger.info(stop_output)
                     break
+        '''plotting loss, recall, ndcg, precision'''
+        loss_per_epoch = np.array(loss_per_epoch)
+        r10 = np.array(r10)
+        r20 = np.array(r20)
+        n10 = np.array(n10)
+        n20 = np.array(n20)
+        p10 = np.array(p10)
+        p20 = np.array(p20)
+        # print('---------',loss_per_epoch, r10, r20, epochth)
+        # loss
+        plot('loss_curve', loss_per_epoch, epochth)
+        # valid
+        plot('recall10_valid', r10[:,0], epochth)
+        plot('recall20_valid', r20[:,0], epochth)
+        plot('ndcg10_valid', n10[:,0], epochth)
+        plot('ndcg20_valid', n20[:,0], epochth)
+        plot('precision10_valid', p10[:,0], epochth)
+        plot('precision20_valid', p20[:,0], epochth)
+        # test
+        plot('recall10_test', r10[:,1], epochth)
+        plot('recall20_test', r20[:,1], epochth)
+        plot('ndcg10_test', n10[:,1], epochth)
+        plot('ndcg20_test', n20[:,1], epochth)
+        plot('precision10_test', p10[:,1], epochth)
+        plot('precision20_test', p20[:,1], epochth)
         return self.best_valid_score, self.best_valid_result, self.best_test_upon_valid
 
 

@@ -18,9 +18,9 @@ from common.loss import BPRLoss, EmbLoss
 from common.init import xavier_uniform_initialization
 
 
-class RTG(GeneralRecommender):
+class KSE(GeneralRecommender):
     def __init__(self, config, dataset):
-        super(RTG, self).__init__(config, dataset)
+        super(KSE, self).__init__(config, dataset)
 
         num_user = self.n_users
         num_item = self.n_items
@@ -41,7 +41,6 @@ class RTG(GeneralRecommender):
         self.num_layer = 1
         self.cold_start = 0
         self.dataset = dataset
-        #self.construction = 'weighted_max'
         self.construction = 'cat'
         self.reg_weight = config['reg_weight']
         self.drop_rate = 0.1
@@ -60,32 +59,33 @@ class RTG(GeneralRecommender):
         
         mm_adj_file = os.path.join(dataset_path, 'mm_adj_{}.pt'.format(self.knn_k))
 
-        if self.v_feat is not None:
-            self.image_embedding = nn.Embedding.from_pretrained(self.v_feat, freeze=False)
-            self.image_trs = nn.Linear(self.v_feat.shape[1], self.feat_embed_dim)
-        if self.t_feat is not None:
-            self.text_embedding = nn.Embedding.from_pretrained(self.t_feat, freeze=False)
-            self.text_trs = nn.Linear(self.t_feat.shape[1], self.feat_embed_dim)
-
+        '''
+        start
+        25/6/23 by bt-nghia
+        concat v_feat and t_feat and feed it to model
+        TODO: add weights
+        '''
+        self.vt_feat = torch.concat([self.t_feat, self.v_feat], dim=1)
+        if self.vt_feat is not None:
+            self.vt_embedding = nn.Embedding.from_pretrained(self.vt_feat, freeze=False)
+            self.vt_trs = nn.Linear(self.vt_feat.shape[1], self.feat_embed_dim)
+        '''
+        end
+        '''
         if os.path.exists(mm_adj_file):
             self.mm_adj = torch.load(mm_adj_file)
-            # change mm_adj to edge_index
             self.item_edge_index = self.mm_adj.coalesce().indices()
         else:
-            if self.v_feat is not None:
-                indices, image_adj = self.get_knn_adj_mat(self.image_embedding.weight.detach())
-                self.mm_adj = image_adj
-            if self.t_feat is not None:
-                indices, text_adj = self.get_knn_adj_mat(self.text_embedding.weight.detach())
-                self.mm_adj = text_adj
-            if self.v_feat is not None and self.t_feat is not None:
-                self.mm_adj = self.mm_image_weight * image_adj + (1.0 - self.mm_image_weight) * text_adj
-                # change mm_adj to edge_index
-                self.item_edge_index = self.mm_adj.coalesce().indices()
-                del text_adj
-                del image_adj
-            torch.save(self.mm_adj, mm_adj_file)
-
+            '''
+            start
+            25/6/23
+            '''
+            if self.vt_feat is not None:
+                indices, vt_adj = self.get_knn_adj_mat(self.vt_embedding.weight.detach())
+                self.mm_adj = vt_adj
+            '''
+            end
+            '''
         # packing interaction in training into edge_index
         train_interactions = dataset.inter_matrix(form='coo').astype(np.float32)
         edge_index = self.pack_edge_index(train_interactions)
@@ -143,41 +143,18 @@ class RTG(GeneralRecommender):
 
         self.MLP_user = nn.Linear(self.dim_latent * 2, self.dim_latent)
         '''
-        GAT for heterograph
+        start
+        25/6/23
+        GCN for vt_feat
         '''
-        if self.v_feat is not None:
-            self.v_drop_ze = torch.zeros(len(self.dropv_node_idx), self.v_feat.size(1)).to(self.device)
-
-            self.v_gat = GAT(self.dataset, batch_size, num_user, num_item, dim_x, self.aggr_mode,
-                         num_layer=self.num_layer, has_id=has_id, dropout=self.drop_rate, dim_latent=64,
-                         device=self.device, features=self.v_feat, dim_feat=self.v_feat.size(1))
-            
-            self.v_gcn = GCN(self.dataset, batch_size, num_user, num_item, dim_x, self.aggr_mode,
-                         num_layer=self.num_layer, has_id=has_id, dropout=self.drop_rate, dim_latent=64,
-                         device=self.device, features=self.v_feat)
-        if self.t_feat is not None:
-            self.t_drop_ze = torch.zeros(len(self.dropt_node_idx), self.t_feat.size(1)).to(self.device)
-            
-            self.t_gat = GAT(self.dataset, batch_size, num_user, num_item, dim_x, self.aggr_mode,
-                         num_layer=self.num_layer, has_id=has_id, dropout=self.drop_rate, dim_latent=64,
-                         device=self.device, features=self.t_feat, dim_feat=self.t_feat.size(1))
-            
-            self.t_gcn =GCN(self.dataset, batch_size, num_user, num_item, dim_x, self.aggr_mode,
-                         num_layer=self.num_layer, has_id=has_id, dropout=self.drop_rate, dim_latent=64,
-                         device=self.device, features=self.t_feat)
-
-
+        if self.vt_feat is not None:
+            # GCN
+            self.vt_gcn = GCN(self.dataset, batch_size, num_user, num_item, dim_x, self.aggr_mode,
+                              num_layer=self.num_layer, has_id=has_id, dropout=self.drop_rate, dim_latent=64,
+                              device=self.device, features=self.vt_feat)
         '''
-        GAT for homograph
+        end 
         '''
-        self.u_gat = nn.ModuleList(
-            GATConv(in_channels=128, out_channels=128, heads=1, concat=False, add_self_loops=True) for _ in range(2)
-        )
-        self.i_gat = nn.ModuleList(
-            GATConv(in_channels=128, out_channels=128, heads=1, concat=False, add_self_loops=True) for _ in range(2)
-        )
-
-
         self.user_graph = User_Graph_sample(num_user, 'add', self.dim_latent)
         # self.result_embed = nn.Parameter(nn.init.xavier_normal_(torch.tensor(np.random.randn(num_user + num_item, dim_x)))).to(self.device)
 
@@ -234,70 +211,22 @@ class RTG(GeneralRecommender):
         pos_item_nodes += self.n_users
         neg_item_nodes += self.n_users
         representation = None
-
-        if self.v_feat is not None:
-            self.v_rep, self.v_preference = self.v_gat(self.edge_index_dropv, self.edge_index, self.v_feat)
-            representation = self.v_rep
-        if self.t_feat is not None:
-            self.t_rep, self.t_preference = self.t_gat(self.edge_index_dropt, self.edge_index, self.t_feat)
-            if representation is None:
-                representation = self.t_rep
-            else:
-                if self.construction == 'cat':
-                    representation = torch.cat((self.v_rep, self.t_rep), dim=1)
-                else:
-                    representation += self.t_rep
-
-
-        if self.construction == 'weighted_sum':
-            if self.v_rep is not None:
-                self.v_rep = torch.unsqueeze(self.v_rep, 2)
-                user_rep = self.v_rep[:self.num_user]
-            if self.t_rep is not None:
-                self.t_rep = torch.unsqueeze(self.t_rep, 2)
-                user_rep = self.t_rep[:self.num_user]
-            if self.v_rep is not None and self.t_rep is not None:
-                
-                user_rep = torch.matmul(torch.cat((self.v_rep[:self.num_user], self.t_rep[:self.num_user]), dim=2),
-                                        self.weight_u)
-            user_rep = torch.squeeze(user_rep)
-
-        if self.construction == 'weighted_max':
-            # pdb.set_trace()
-            self.v_rep = torch.unsqueeze(self.v_rep, 2)
-            
-            self.t_rep = torch.unsqueeze(self.t_rep, 2)
-            
-            user_rep = torch.cat((self.v_rep[:self.num_user], self.t_rep[:self.num_user]), dim=2)
-            user_rep = self.weight_u.transpose(1,2)*user_rep
-            user_rep = torch.max(user_rep,dim=2).values
+        '''
+        GCN for visual_textual_features
+        '''
+        if self.vt_feat is not None:
+            self.vt_rep, self.vt_preference = self.vt_gcn(self.edge_index_dropt, self.edge_index, self.vt_feat)
+            representation = self.vt_rep
         if self.construction == 'cat':
-            # pdb.set_trace()
-            if self.v_rep is not None:
-                user_rep = self.v_rep[:self.num_user]
-            if self.t_rep is not None:
-                user_rep = self.t_rep[:self.num_user]
-            if self.v_rep is not None and self.t_rep is not None:
-                self.v_rep = torch.unsqueeze(self.v_rep, 2)
-                self.t_rep = torch.unsqueeze(self.t_rep, 2)
-                user_rep = torch.cat((self.v_rep[:self.num_user], self.t_rep[:self.num_user]), dim=2)
-                user_rep = self.weight_u.transpose(1,2)*user_rep
-
-                user_rep = torch.cat((user_rep[:,:,0], user_rep[:,:,1]), dim=1)
+            if self.vt_rep is not None:
+                user_rep = self.vt_rep[:self.num_user]
 
         item_rep = representation[self.num_user:]
         ############################################ multi-modal information aggregation
         h = item_rep
-        # for i in range(self.n_layers):
-            # h = torch.sparse.mm(self.mm_adj, h)
-        # h_u1 = self.user_graph(user_rep, self.epoch_user_graph, self.user_weight_matrix)
-
-        for i, l in enumerate(self.i_gat):
-            h = l(h, self.item_edge_index)
-
-        h_u1 = user_rep.to(self.device)
-        for i, l in enumerate(self.u_gat):
-            h_u1 = l(h_u1, self.user_edge_index)
+        for i in range(self.n_layers):
+            h = torch.sparse.mm(self.mm_adj, h)
+        h_u1 = self.user_graph(user_rep, self.epoch_user_graph, self.user_weight_matrix)
 
         user_rep = user_rep + h_u1
         item_rep = item_rep + h
@@ -467,6 +396,7 @@ class GAT(torch.nn.Module):
         self.gat2 = GATConv(self.dim_latent, self.dim_latent, heads=self.n_head, add_self_loops=self.add_self_loops, concat=self.concatnation)
         
     def forward(self, edge_index_drop, edge_index, features):
+        # edge_index_drop is redundant
         neigh_feat = self.MLP_1(F.leaky_relu(self.MLP(features))) if self.dim_latent else features
         x = torch.cat((self.preference, neigh_feat), dim=0).to(self.device) 
         x = F.normalize(x).to(self.device)
@@ -497,7 +427,7 @@ class Base_gcn(MessagePassing):
             # pdb.set_trace()
             row, col = edge_index
             deg = degree(row, size[0], dtype=x_j.dtype)
-            print('size[0]:', size[0])
+            # print('size[0]:', size[0])
             deg_inv_sqrt = deg.pow(-0.5)
             norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
             return norm.view(-1, 1) * x_j

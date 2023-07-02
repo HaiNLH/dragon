@@ -21,7 +21,7 @@ if __name__ == '__main__':
     config_dict = {
         #'dropout': [0.2],
         #'reg_weight': [1e-04, 1e-03],
-        'learning_rate': [1e-4],
+        'learning_rate': [0.000001],
         #'reg_weight': [0.0001,0.00001],
         #'n_layers': [2],
         #'reg_weight': [0.01],

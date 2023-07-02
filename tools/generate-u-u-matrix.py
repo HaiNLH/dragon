@@ -18,15 +18,15 @@ def gen_user_matrix(all_edge, no_users):
         user, item = edge
         edge_dict[user].add(item)
 
-    min_user = 0  # 0
-    num_user = no_users  # in our case, users/items ids start from 1
+    min_user = 0             # 0
+    num_user = no_users      # in our case, users/items ids start from 1
     user_graph_matrix = torch.zeros(num_user, num_user)
     key_list = list(edge_dict.keys())
     key_list.sort()
     bar = tqdm(total=len(key_list))
     for head in range(len(key_list)):
         bar.update(1)
-        for rear in range(head + 1, len(key_list)):
+        for rear in range(head+1, len(key_list)):
             head_key = key_list[head]
             rear_key = key_list[rear]
             # print(head_key, rear_key)
@@ -35,23 +35,23 @@ def gen_user_matrix(all_edge, no_users):
             # print(len(user_head.intersection(user_rear)))
             inter_len = len(item_head.intersection(item_rear))
             if inter_len > 0:
-                user_graph_matrix[head_key - min_user][rear_key - min_user] = inter_len
-                user_graph_matrix[rear_key - min_user][head_key - min_user] = inter_len
+                user_graph_matrix[head_key-min_user][rear_key-min_user] = inter_len
+                user_graph_matrix[rear_key-min_user][head_key-min_user] = inter_len
     bar.close()
 
     return user_graph_matrix
 
 
-if __name__ == '__main__':
+if __name__ == 	'__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', '-d', type=str, default='baby', help='name of dataset')
+    parser.add_argument('--dataset', '-d', type=str, default='games', help='name of dataset')
     args = parser.parse_args()
     dataset_name = args.dataset
     print(f'Generating u-u matrix for {dataset_name} ...\n')
 
     config = {}
     cur_dir = os.getcwd()
-    con_dir = os.path.join(os.path.dirname(cur_dir), 'DRAGON\configs')  # get config dir
+    con_dir = os.path.join(os.path.dirname(cur_dir), 'DRAGON\configs') # get config dir
     overall_config_file = os.path.join(con_dir, "overall.yaml")
     dataset_config_file = os.path.join(con_dir, "dataset", "{}.yaml".format(dataset_name))
     conf_files = [overall_config_file, dataset_config_file]
@@ -98,9 +98,9 @@ if __name__ == '__main__':
 
     for i in range(num_user):
         if user_num[i] <= 200:
-            user_i = torch.topk(user_graph[i], int(user_num[i]))
-            edge_list_i = user_i.indices.numpy().tolist()
-            edge_list_j = user_i.values.numpy().tolist()
+            user_i = torch.topk(user_graph[i],int(user_num[i]))
+            edge_list_i =user_i.indices.numpy().tolist()
+            edge_list_j =user_i.values.numpy().tolist()
             edge_list = [edge_list_i, edge_list_j]
             user_graph_dict[i] = edge_list
         else:

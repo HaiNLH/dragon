@@ -1,1 +1,8 @@
 data
+notevalue.txt
+exper.ipynb
+graph_construction.ipynb
+__pycache__
+log
+models/origin.py
+runs

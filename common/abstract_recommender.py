@@ -87,7 +87,7 @@ class GeneralRecommender(AbstractRecommender):
         self.device = config['device']
 
         # load encoded features here
-        self.v_feat, self.t_feat, self.concat_feat = None, None, None
+        self.v_feat, self.t_feat = None, None
         if not config['end2end'] and config['is_multimodal_model']:
             dataset_path = os.path.abspath(config['data_path'] + config['dataset'])
             # if file exist?
@@ -99,7 +99,5 @@ class GeneralRecommender(AbstractRecommender):
             if os.path.isfile(t_feat_file_path):
                 self.t_feat = torch.from_numpy(np.load(t_feat_file_path, allow_pickle=True)).type(torch.FloatTensor).to(
                     self.device)
-            if self.t_feat is not None and self.v_feat is not None:
-                self.concat_feat = torch.cat((self.v_feat, self.t_feat), dim=1)
 
             assert self.v_feat is not None or self.t_feat is not None, 'Features all NONE'
